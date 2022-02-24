@@ -29,7 +29,7 @@ from django.contrib.contenttypes.models import ContentType
 default_show_error_for_referenced_pages = False
 
 SHOW_ERROR_FOR_REFERENCED_PAGES = getattr(
-    settings, 'SHOW_ERROR_FOR_REFERENCED_PAGES', default_show_error_for_referenced_pages)
+    settings, 'WAGTAILTRANSFER_SHOW_ERROR_FOR_REFERENCED_PAGES', default_show_error_for_referenced_pages)
 
 
 def pages_for_export(request, root_page_id):
