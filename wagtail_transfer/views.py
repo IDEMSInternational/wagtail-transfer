@@ -31,6 +31,13 @@ else:
     from wagtail.core.models import Page
 
 
+# After import show error for Models which were NOT created in response to being encountered in object references
+default_show_error_for_referenced_pages = False
+
+SHOW_ERROR_FOR_REFERENCED_PAGES = getattr(
+    settings, 'WAGTAILTRANSFER_SHOW_ERROR_FOR_REFERENCED_PAGES', default_show_error_for_referenced_pages)
+
+
 def pages_for_export(request, root_page_id):
     check_digest(str(root_page_id), request.GET.get('digest', ''))
 
@@ -266,6 +273,33 @@ def import_page(request):
     importer = ImportPlanner.for_page(source=request.POST['source_page_id'], destination=dest_page_id)
     importer.add_json(response.content)
     importer = import_missing_object_data(source, importer)
+
+    if SHOW_ERROR_FOR_REFERENCED_PAGES:
+        for referenced, referrers in importer.ignored_referenced_page.items():
+            response = requests.get(
+                f"{base_url}api/chooser/pages/",
+                params={'id': referenced, 'digest': digest_for_source(source, f'id={referenced}')})
+            json_response = json.loads(response.content)
+            items = json_response.get('items')
+            referenced_title = ''
+            if items:
+                referenced_title = items[0].get('admin_display_title')
+
+            referrer_titles = ''
+            for referer in referrers:
+                response = requests.get(
+                    f"{base_url}api/chooser/pages/",
+                    params={'id': referer, 'digest': digest_for_source(source, f'id={referer}')})
+                json_response = json.loads(response.content)
+                items = json_response.get('items')
+                if items:
+                    referrer_titles += items[0].get('admin_display_title') + ', '
+
+            referrer_titles = referrer_titles.rstrip(', ')
+            if referenced_title and referrer_titles:
+                messages.add_message(request, messages.ERROR,
+                                     f'Unable to fetch referenced page <strong>{referenced_title}</strong> '
+                                     f'in these pages: <strong>{referrer_titles}</strong>')
 
     if dest_page_id:
         return redirect('wagtailadmin_explore', dest_page_id)

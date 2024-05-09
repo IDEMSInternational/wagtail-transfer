@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from copy import copy
 
 from django.conf import settings
@@ -35,6 +36,12 @@ NO_FOLLOW_MODELS = [
     model_label.lower()
     for model_label in getattr(settings, 'WAGTAILTRANSFER_NO_FOLLOW_MODELS', default_no_follow_models)
 ]
+
+# After import show error for Models which were NOT created in response to being encountered in object references
+default_show_error_for_referenced_pages = False
+
+SHOW_ERROR_FOR_REFERENCED_PAGES = getattr(
+    settings, 'WAGTAILTRANSFER_SHOW_ERROR_FOR_REFERENCED_PAGES', default_show_error_for_referenced_pages)
 
 
 class CircularDependencyException(Exception):
@@ -189,6 +196,8 @@ class ImportPlanner:
         # NO_FOLLOW_MODELS told us not to, or because they did not exist on the source site.
         self.failed_creations = set()
 
+        self.ignored_referenced_page = defaultdict(list)
+
     @classmethod
     def for_page(cls, source, destination):
         return cls(root_page_source_pk=source, destination_parent_id=destination)
@@ -297,6 +306,14 @@ class ImportPlanner:
             ):
                 # NO_FOLLOW_MODELS prevents us from creating this object
                 self.failed_creations.add((objective.model, objective.source_id))
+
+                if SHOW_ERROR_FOR_REFERENCED_PAGES:
+                    for operation in self.operations:
+                        for dependency in operation.dependencies:
+                            if (objective.model, objective.source_id) == dependency[:2]:
+                                source_id = operation.object_data.get('fields', {}).get('source', 0)
+                                pk = operation.object_data.get('pk')
+                                self.ignored_referenced_page[objective.source_id].append(source_id or pk)
             else:
                 task = ('create', objective.model, objective.source_id)
                 self._handle_task(task)
